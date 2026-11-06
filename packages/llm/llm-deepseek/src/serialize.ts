@@ -23,9 +23,19 @@ function toolInput(raw: string): Record<string, unknown> {
     : {}
 }
 
+/** The Messages API expects every assistant `tool_use` to be answered by the
+ * immediately following message. A text block after a tool call makes the API
+ * start a new assistant turn there and reject the request with "tool_use ids
+ * were found without tool_result blocks immediately after". Durable content
+ * keeps the model's stream order, so emit the calls last instead. */
 function assistant(message: Message, model: string, onReplayDegrade?: (reason: string) => void): WireBlock[] {
   const replay = readReplay(message, model, onReplayDegrade)
-  return message.content.flatMap((block, index): WireBlock | WireBlock[] => {
+  const entries = message.content.map((block, index) => ({ block, index }))
+  const ordered = [
+    ...entries.filter(entry => entry.block.type !== 'tool-call'),
+    ...entries.filter(entry => entry.block.type === 'tool-call'),
+  ]
+  return ordered.flatMap(({ block, index }): WireBlock | WireBlock[] => {
     switch (block.type) {
       case 'text': return block.text.length === 0 ? [] : { type: 'text', text: block.text }
       case 'reasoning': return {

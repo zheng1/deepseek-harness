@@ -45,6 +45,19 @@ describe('Messages request conversion', () => {
     expect(body([assistant([{ type: 'text', text: ' ' }])]).messages[0]?.content).toEqual([{ type: 'text', text: ' ' }])
   })
 
+  it('emits tool calls after trailing text so the next message answers them', () => {
+    const id = 'a'
+    const message = assistant([{ type: 'reasoning', text: 'reason' }, call(id), { type: 'text', text: 'done' }])
+    expect(body([user(), message, result(id)]).messages[1]).toEqual({
+      role: 'assistant',
+      content: [
+        { type: 'thinking', thinking: 'reason' },
+        { type: 'text', text: 'done' },
+        { type: 'tool_use', id, name: 'read', input: { path: 'a' } },
+      ],
+    })
+  })
+
   it('does not flush a system update at an omitted empty assistant message', () => {
     const request = nativeBody([
       user(), createSystemMessage('updated'), assistant([{ type: 'text', text: '' }]),
